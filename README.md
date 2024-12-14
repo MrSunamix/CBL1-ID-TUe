@@ -98,9 +98,7 @@ Current pin assignments:
    ```bash
    pio run --target upload
    ```
-
-## Project Structure
-```
+   
 ## Project Structure
 ```
 ├── .pio/                    # PlatformIO build directory
@@ -128,7 +126,6 @@ Current pin assignments:
 ├── test/                   # Test files
 ├── .gitignore             # Git ignore rules
 └── platformio.ini         # PlatformIO configuration
-```
 ```
 
 ## Development Status
