@@ -42,11 +42,13 @@
 #define NOTE_G5  784
 #define NOTE_A5  880
 
-// Global variables (keep your existing ones)
+// Global variables
 CRGB leds[NUM_LEDS];
 Adafruit_GC9A01A tft(TFT_CS, TFT_DC, TFT_RST);
 DisplayTest displayTest(tft);
 bootUp bootScreen(tft, leds, NUM_LEDS);
+unsigned long lastToneTime = 0;
+const int TONE_INTERVAL = 200; // Minimum time between tones in milliseconds
 
 struct ColorData {
     uint16_t clear;
@@ -116,6 +118,37 @@ ColorData readColorData() {
     return data;
 }
 
+// Sound section
+void playTone(int frequency, int duration) {
+    int period = 1000000 / frequency;  // Period in microseconds
+    int halfPeriod = period / 2;
+    long numCycles = (long)duration * 1000 / period;
+
+    for (long i = 0; i < numCycles; i++) {
+        digitalWrite(SPEAKER_PIN, HIGH);
+        delayMicroseconds(halfPeriod);
+        digitalWrite(SPEAKER_PIN, LOW);
+        delayMicroseconds(halfPeriod);
+    }
+}
+
+void playColorSound(float red_ratio, float green_ratio, float blue_ratio) {
+    unsigned long currentTime = millis();
+    
+    // Only play a new tone if enough time has passed since the last one
+    if (currentTime - lastToneTime >= TONE_INTERVAL) {
+        if (red_ratio > green_ratio && red_ratio > blue_ratio) {
+            playTone(NOTE_C5, 50);  // Shorter duration for more responsive feedback
+        } else if (green_ratio > red_ratio && green_ratio > blue_ratio) {
+            playTone(NOTE_E5, 50);
+        } else if (blue_ratio > red_ratio && blue_ratio > green_ratio) {
+            playTone(NOTE_G5, 50);
+        } else if (red_ratio > 200 && green_ratio > 200 && blue_ratio > 200) {
+            playTone(NOTE_A5, 50);
+        }
+        lastToneTime = currentTime;
+    }
+}
 
 void setup() {
     Serial.begin(115200);
@@ -131,6 +164,9 @@ void setup() {
     // Set LED red during init
     fill_solid(leds, NUM_LEDS, CRGB::Red);
     FastLED.show();
+
+    // Sound section
+    pinMode(SPEAKER_PIN, OUTPUT);
     
     // Initialize color sensor
     if (!initColorSensor()) {
@@ -141,7 +177,7 @@ void setup() {
     }
     printf("Color sensor initialized successfully!\n");
     
-    // Your existing display initialization code
+    // Display initialization
     SPI.begin(TFT_SCLK, -1, TFT_MOSI, TFT_CS);
     delay(100);
     
@@ -158,27 +194,33 @@ void setup() {
 void loop() {
     ColorData color = readColorData();
     
-    // Calculate color ratios
+    // Calculate color ratios with safety check
     float total = color.clear;
-    float red_ratio = (color.red / total) * 255.0;
-    float green_ratio = (color.green / total) * 255.0;
-    float blue_ratio = (color.blue / total) * 255.0;
+    if (total > 0) {  // Prevent division by zero
+        float red_ratio = (color.red / total) * 255.0;
+        float green_ratio = (color.green / total) * 255.0;
+        float blue_ratio = (color.blue / total) * 255.0;
+        
+        // Update LED color
+        leds[0] = CRGB(red_ratio, green_ratio, blue_ratio);
+        FastLED.show();
+        
+        // Update display
+        uint16_t displayColor = tft.color565(red_ratio, green_ratio, blue_ratio);
+        tft.fillRect(0, 0, 256, 256, displayColor);
+        
+        // Play sound based on color
+        playColorSound(red_ratio, green_ratio, blue_ratio);
+        
+        // Print debug information
+        printf("Color values:\n");
+        printf("Clear: %d\n", color.clear);
+        printf("Red: %d (ratio: %.2f)\n", color.red, red_ratio);
+        printf("Green: %d (ratio: %.2f)\n", color.green, green_ratio);
+        printf("Blue: %d (ratio: %.2f)\n", color.blue, blue_ratio);
+        printf("\n");
+    }
     
-    // Update LED color
-    leds[0] = CRGB(red_ratio, green_ratio, blue_ratio);
-    FastLED.show();
-    
-    // Update display
-    uint16_t displayColor = tft.color565(red_ratio, green_ratio, blue_ratio);
-    tft.fillRect(0, 0, 256, 256, displayColor);
-    
-    // Print debug information
-    printf("Color values:\n");
-    printf("Clear: %d\n", color.clear);
-    printf("Red: %d (ratio: %.2f)\n", color.red, red_ratio);
-    printf("Green: %d (ratio: %.2f)\n", color.green, green_ratio);
-    printf("Blue: %d (ratio: %.2f)\n", color.blue, blue_ratio);
-    printf("\n");
-    
-    delay(100);  // Adjust delay as needed
+    // Smaller delay for more frequent updates
+    delay(10);  // 10ms delay between readings
 }
